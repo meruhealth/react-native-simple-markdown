@@ -19,6 +19,39 @@ type DefaultProps = Props & {
   children: string,
 }
 
+const TEXT_TYPES = {
+  text: true,
+  strong: true,
+  em: true,
+  u: true,
+}
+
+const HEADING_TYPES = {
+  text: true,
+}
+
+const transformTextItems = (node) => {
+  const content = _.transform(node.content, (res, item) => {
+    const lastI = res.length - 1
+    // Combine consecutive same string types together
+    if (lastI >= 0 && TEXT_TYPES[item.type] && res[lastI].type === item.type) {
+      res[lastI].content += item.content
+    } else {
+      if (item.type === 'text' || !TEXT_TYPES[item.type]) {
+        res.push(item)
+      } else {
+        const transformedItem = transformTextItems(item)
+        res.push(transformedItem)
+      }
+    }
+  }, [])
+
+  return {
+    ...node,
+    content,
+  }
+}
+
 class Markdown extends PureComponent<DefaultProps, Props, void> {
   static defaultProps = {
     styles: initialStyles,
@@ -26,6 +59,19 @@ class Markdown extends PureComponent<DefaultProps, Props, void> {
     rules: {},
     whitelist: [],
     blacklist: [],
+  }
+
+  static transformTreeForRN (tree) {
+
+    return tree.map(node => {
+      if (node.type === 'paragraph') {
+        return transformTextItems(node)
+      } else if (node.type === 'heading') {
+        return transformTextItems(node)
+      } else {
+        return node
+      }
+    })
   }
 
   /** Post processes rules to strip out unwanted styling options
@@ -52,7 +98,8 @@ class Markdown extends PureComponent<DefaultProps, Props, void> {
         ? this.props.children.join('')
         : this.props.children
       const blockSource = child + '\n\n'
-      const tree = SimpleMarkdown.parserFor(rules)(blockSource, { inline: false })
+      let tree = SimpleMarkdown.parserFor(rules)(blockSource, { inline: false })
+      tree = Markdown.transformTreeForRN(tree)
       return SimpleMarkdown.reactFor(SimpleMarkdown.ruleOutput(rules, 'react'))(tree)
     } catch(errors) {
       this.props.errorHandler
